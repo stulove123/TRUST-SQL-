@@ -6,7 +6,7 @@
 # News
 - **[2026/02/21]** We released **[Arcwise-Plat-SQL](https://github.com/uiuc-kang-lab/text_to_sql_benchmarks/blob/main/data/arcwise_plat_sql_only_with_diff.json)** and **[Arcwise-Plat](https://github.com/uiuc-kang-lab/text_to_sql_benchmarks/blob/main/data/arcwise_plat_full_with_diff.json)**. Building on [Arcwise’s corrections](https://drive.google.com/file/d/1iWlYVknwK5wGli5lnwg4stvNzMogjhwj/view), we fixed additional errors identified in **BIRD Mini-Dev**.  
   1. Arcwise-Plat-SQL: we only corrected the SQL annotations, preserving original ambiguities in the questions and evidence.
-  2. Arcwise-Plat:  we resolved both incorrect SQL annotations and underlying ambiguities.
+  2. Arcwise-Plat:  we resolved both incorrect SQL annotations and underlying ambiguities. We also fixed issues identified in the [schema](https://github.com/uiuc-kang-lab/text_to_sql_benchmarks/tree/main/data/schemas).
 - **[2025/12/15]** Our paper, **[“Pervasive Annotation Errors Break Text-to-SQL Benchmarks and Leaderboards,”](https://arxiv.org/pdf/2601.08778)** was accepted to **VLDB 2026**.  
 - **[2025/10/06]** Our paper, **[“Text-to-SQL Benchmarks Are Broken: An In-Depth Analysis of Annotation Errors,”](https://vldb.org/cidrdb/papers/2026/p5-jin.pdf)** was accepted to **CIDR 2026**.
 # Overview
