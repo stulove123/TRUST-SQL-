@@ -1,0 +1,18 @@
+{
+  "dataset": "/root/autodl-tmp/text_to_sql_benchmarks/data/arcwise_plat_full_with_diff.json",
+  "db_root": "/root/autodl-tmp/DeepEye-SQL/data/arcwise_plat/dev/dev_databases",
+  "model": "/root/autodl-tmp/DeepEye-SQL/workspace/models/modelscope/Qwen/Qwen3___5-4B",
+  "base_url": "http://127.0.0.1:8000/v1",
+  "total": 3,
+  "correct": 2,
+  "execution_accuracy": 0.6666666666666666,
+  "max_rounds": 10,
+  "temperature": 0.2,
+  "top_p": 0.9,
+  "max_tokens": 1024,
+  "enable_thinking": true,
+  "enforce_metadata_only_explore": false,
+  "fallback_to_last_generated": true,
+  "predictions_path": "/root/autodl-tmp/text_to_sql_benchmarks/results/qwen35-4b-arcwise-plat-trustsql-format-check-3/predictions.json",
+  "details_path": "/root/autodl-tmp/text_to_sql_benchmarks/results/qwen35-4b-arcwise-plat-trustsql-format-check-3/details.jsonl"
+}

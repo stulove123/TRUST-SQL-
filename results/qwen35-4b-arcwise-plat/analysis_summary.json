@@ -1,0 +1,107 @@
+{
+  "total": 498,
+  "correct": 228,
+  "execution_accuracy": 0.4578313253012048,
+  "wrong": 270,
+  "per_db": [
+    {
+      "db_id": "superhero",
+      "total": 52,
+      "correct": 37,
+      "pred_errors": 2,
+      "gold_errors": 0,
+      "timeouts": 0,
+      "execution_accuracy": 0.7115384615384616
+    },
+    {
+      "db_id": "card_games",
+      "total": 52,
+      "correct": 28,
+      "pred_errors": 4,
+      "gold_errors": 1,
+      "timeouts": 1,
+      "execution_accuracy": 0.5384615384615384
+    },
+    {
+      "db_id": "european_football_2",
+      "total": 51,
+      "correct": 26,
+      "pred_errors": 5,
+      "gold_errors": 0,
+      "timeouts": 0,
+      "execution_accuracy": 0.5098039215686274
+    },
+    {
+      "db_id": "debit_card_specializing",
+      "total": 30,
+      "correct": 15,
+      "pred_errors": 3,
+      "gold_errors": 0,
+      "timeouts": 0,
+      "execution_accuracy": 0.5
+    },
+    {
+      "db_id": "toxicology",
+      "total": 40,
+      "correct": 19,
+      "pred_errors": 0,
+      "gold_errors": 0,
+      "timeouts": 0,
+      "execution_accuracy": 0.475
+    },
+    {
+      "db_id": "student_club",
+      "total": 48,
+      "correct": 22,
+      "pred_errors": 8,
+      "gold_errors": 0,
+      "timeouts": 0,
+      "execution_accuracy": 0.4583333333333333
+    },
+    {
+      "db_id": "codebase_community",
+      "total": 49,
+      "correct": 22,
+      "pred_errors": 8,
+      "gold_errors": 0,
+      "timeouts": 0,
+      "execution_accuracy": 0.4489795918367347
+    },
+    {
+      "db_id": "formula_1",
+      "total": 66,
+      "correct": 29,
+      "pred_errors": 13,
+      "gold_errors": 0,
+      "timeouts": 0,
+      "execution_accuracy": 0.4393939393939394
+    },
+    {
+      "db_id": "financial",
+      "total": 30,
+      "correct": 10,
+      "pred_errors": 8,
+      "gold_errors": 0,
+      "timeouts": 0,
+      "execution_accuracy": 0.3333333333333333
+    },
+    {
+      "db_id": "thrombosis_prediction",
+      "total": 50,
+      "correct": 16,
+      "pred_errors": 18,
+      "gold_errors": 0,
+      "timeouts": 0,
+      "execution_accuracy": 0.32
+    },
+    {
+      "db_id": "california_schools",
+      "total": 30,
+      "correct": 4,
+      "pred_errors": 11,
+      "gold_errors": 0,
+      "timeouts": 0,
+      "execution_accuracy": 0.13333333333333333
+    }
+  ]
+}
