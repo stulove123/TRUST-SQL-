@@ -1,4 +1,23 @@
+.autodl/
+.vscode/
+vllm-env/
+
 __pycache__/
+**/__pycache__/
 *.py[cod]
-models/
-data/arcwise_plat/
+*.log
+
+# Local models and benchmark databases are too large for GitHub.
+text_to_sql_benchmarks/models/
+text_to_sql_benchmarks/data/arcwise_plat/
+
+# Local smoke/rerun outputs.
+text_to_sql_benchmarks/results/qwen35-4b-arcwise-plat-smoke copy/
+text_to_sql_benchmarks/results/qwen35-4b-arcwise-plat-trustsql-full/details copy.jsonl
+text_to_sql_benchmarks/results/qwen35-4b-arcwise-plat-trustsql-memory-*/
+
+# Credentials and local secrets.
+**/*credential*.json
+**/*secret*.json
+**/.env
+**/.env.*

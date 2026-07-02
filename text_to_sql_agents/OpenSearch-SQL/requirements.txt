@@ -1,8 +1,0 @@
-sentence_transformers
-dashscope
-func_timeout
-torch
-pandas
-numpy
-chardet
-openai

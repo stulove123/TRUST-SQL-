@@ -1,0 +1,10 @@
+{
+  "dataset": "data/arcwise_plat_full_with_diff.json",
+  "model": "/root/autodl-tmp/DeepEye-SQL/workspace/models/modelscope/Qwen/Qwen3___5-4B",
+  "base_url": "http://127.0.0.1:8000/v1",
+  "total": 498,
+  "correct": 228,
+  "execution_accuracy": 0.4578313253012048,
+  "predictions_path": "results/qwen35-4b-arcwise-plat/predictions.json",
+  "details_path": "results/qwen35-4b-arcwise-plat/details.jsonl"
+}

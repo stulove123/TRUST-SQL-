@@ -1,5 +1,0 @@
-{
-  "1471": "SELECT CAST(SUM(CASE WHEN Currency = 'EUR' THEN 1 ELSE 0 END) AS REAL) / SUM(CASE WHEN Currency = 'CZK' THEN 1 ELSE 0 END) AS eur_to_czk_ratio FROM customers;",
-  "1472": "SELECT c.CustomerID, c.Segment, ym.Date, ym.Consumption \nFROM customers c \nJOIN yearmonth ym ON c.CustomerID = ym.CustomerID \nWHERE c.Segment = 'LAM' \n  AND ym.Date BETWEEN '201201' AND '201212' \nORDER BY ym.Consumption ASC \nLIMIT 1;",
-  "1473": "SELECT AVG(sub.total) / 12.0 AS avg_monthly_consumption FROM (SELECT SUM(y.Consumption) AS total FROM yearmonth y INNER JOIN customers c ON y.CustomerID = c.CustomerID WHERE c.Segment = 'SME' AND y.Date LIKE '2013%' GROUP BY c.CustomerID) AS sub;"
-}

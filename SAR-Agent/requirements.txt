@@ -1,5 +1,0 @@
-snowflake
-openai
-anthropic
-gdown
-pandas

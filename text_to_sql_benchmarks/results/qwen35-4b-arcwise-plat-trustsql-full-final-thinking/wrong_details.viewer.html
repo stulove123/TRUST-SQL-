@@ -1,0 +1,1011 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Arcwise-Plat Wrong Case Viewer</title>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --panel-2: #f0f4f7;
+      --text: #172026;
+      --muted: #64717d;
+      --line: #d9e0e6;
+      --accent: #0f766e;
+      --accent-2: #365c9f;
+      --danger: #b42318;
+      --warn: #9a5b00;
+      --ok: #16703d;
+      --code-bg: #111827;
+      --code-text: #e5edf6;
+      --shadow: 0 10px 28px rgba(19, 34, 45, 0.08);
+      --radius: 8px;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+    }
+
+    button, input, select, textarea { font: inherit; }
+    button { cursor: pointer; }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    header {
+      background: #fff;
+      border-bottom: 1px solid var(--line);
+      padding: 14px 18px 12px;
+      position: sticky;
+      top: 0;
+      z-index: 5;
+    }
+
+    .header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.2;
+      font-weight: 760;
+    }
+
+    .source-line {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .file-label, .small-button {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--text);
+      border-radius: 6px;
+      padding: 7px 10px;
+      line-height: 1;
+    }
+
+    .file-label:hover, .small-button:hover { border-color: #9fb0bd; }
+    #fileInput { display: none; }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(96px, 1fr));
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .metric {
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 9px 10px;
+      min-width: 0;
+    }
+
+    .metric .value {
+      display: block;
+      font-size: 20px;
+      line-height: 1.15;
+      font-weight: 760;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .metric .label {
+      display: block;
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.25;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    main {
+      display: grid;
+      grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
+      min-height: 0;
+    }
+
+    aside {
+      border-right: 1px solid var(--line);
+      background: #fff;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    .filters {
+      padding: 12px;
+      border-bottom: 1px solid var(--line);
+      display: grid;
+      gap: 8px;
+    }
+
+    .filters input, .filters select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      padding: 8px 9px;
+      min-height: 36px;
+    }
+
+    .filter-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .case-count {
+      color: var(--muted);
+      font-size: 12px;
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .case-list {
+      overflow: auto;
+      padding: 8px;
+      display: grid;
+      gap: 6px;
+      align-content: start;
+    }
+
+    .case-item {
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: var(--radius);
+      padding: 9px 10px;
+      text-align: left;
+      display: grid;
+      gap: 6px;
+      width: 100%;
+    }
+
+    .case-item.active {
+      border-color: var(--accent);
+      box-shadow: inset 3px 0 0 var(--accent);
+      background: #f0fbf9;
+    }
+
+    .case-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      min-width: 0;
+    }
+
+    .qid {
+      font-weight: 760;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .db-name {
+      color: var(--muted);
+      font-size: 12px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+    }
+
+    .question-snippet {
+      color: #34414c;
+      font-size: 12px;
+      line-height: 1.35;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      padding: 2px 7px;
+      font-size: 11px;
+      line-height: 1.35;
+      color: var(--muted);
+      background: #fff;
+      max-width: 100%;
+    }
+
+    .badge.danger { color: var(--danger); border-color: #f0b7b2; background: #fff5f4; }
+    .badge.warn { color: var(--warn); border-color: #efcc8f; background: #fff8e8; }
+    .badge.ok { color: var(--ok); border-color: #b5dfc6; background: #f0fbf4; }
+    .badge.info { color: var(--accent-2); border-color: #bfd0ee; background: #f3f7ff; }
+
+    .detail {
+      min-width: 0;
+      overflow: auto;
+      padding: 16px 18px 24px;
+    }
+
+    .detail-inner {
+      max-width: 1280px;
+      margin: 0 auto;
+      display: grid;
+      gap: 12px;
+    }
+
+    .section {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .section-header {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+      background: #fbfcfd;
+    }
+
+    .section-title {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 760;
+      line-height: 1.25;
+    }
+
+    .section-body { padding: 12px; }
+    .stack { display: grid; gap: 10px; }
+
+    .case-heading {
+      display: grid;
+      gap: 8px;
+    }
+
+    .case-heading h2 {
+      margin: 0;
+      font-size: 20px;
+      line-height: 1.25;
+      font-weight: 760;
+    }
+
+    .question-text, .evidence-text {
+      margin: 0;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+
+    .evidence-text {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .compare-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 12px;
+    }
+
+    .compare-pane {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      overflow: hidden;
+      min-width: 0;
+      background: #fff;
+    }
+
+    .pane-title {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel-2);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      font-size: 12px;
+      line-height: 1.45;
+      tab-size: 2;
+    }
+
+    .sql-code, .json-code, .text-code {
+      background: var(--code-bg);
+      color: var(--code-text);
+      padding: 12px;
+      overflow: auto;
+      max-height: 320px;
+    }
+
+    .table-wrap {
+      overflow: auto;
+      max-height: 340px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    th, td {
+      border-bottom: 1px solid var(--line);
+      border-right: 1px solid var(--line);
+      padding: 7px 8px;
+      text-align: left;
+      vertical-align: top;
+      max-width: 280px;
+      overflow-wrap: anywhere;
+    }
+
+    th {
+      background: #f5f7f9;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      font-weight: 720;
+    }
+
+    td:last-child, th:last-child { border-right: 0; }
+    tr:last-child td { border-bottom: 0; }
+
+    .empty-state {
+      padding: 14px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .result-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--line);
+      background: #fff;
+    }
+
+    details.round {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      overflow: hidden;
+    }
+
+    details.round + details.round { margin-top: 8px; }
+
+    details.round > summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 9px 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      background: #fbfcfd;
+      border-bottom: 1px solid transparent;
+    }
+
+    details.round[open] > summary { border-bottom-color: var(--line); }
+    details.round > summary::-webkit-details-marker { display: none; }
+
+    .round-title {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-width: 0;
+      flex-wrap: wrap;
+    }
+
+    .round-body {
+      padding: 10px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .kv-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .kv {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 8px;
+      min-width: 0;
+      background: #fff;
+    }
+
+    .kv .k {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      margin-bottom: 4px;
+    }
+
+    .kv .v {
+      display: block;
+      font-size: 12px;
+      font-weight: 650;
+      overflow-wrap: anywhere;
+    }
+
+    .copy-button {
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 6px;
+      padding: 4px 7px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.2;
+    }
+
+    .copy-button:hover { color: var(--text); border-color: #9fb0bd; }
+
+    .error-panel {
+      border: 1px solid #f0b7b2;
+      background: #fff5f4;
+      color: var(--danger);
+      padding: 10px 12px;
+      border-radius: var(--radius);
+      line-height: 1.45;
+    }
+
+    .hidden { display: none !important; }
+
+    @media (max-width: 920px) {
+      header { position: static; }
+      .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      main { grid-template-columns: 1fr; }
+      aside { border-right: 0; border-bottom: 1px solid var(--line); max-height: 56vh; }
+      .compare-grid { grid-template-columns: 1fr; }
+      .kv-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 520px) {
+      .filter-row { grid-template-columns: 1fr; }
+      .metrics { grid-template-columns: 1fr; }
+      .detail { padding: 12px; }
+      .kv-grid { grid-template-columns: 1fr; }
+      .section-header { align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="header-row">
+        <div>
+          <h1>Arcwise-Plat Wrong Case Viewer</h1>
+          <div id="sourceLine" class="source-line">source: wrong_details.pretty.json</div>
+        </div>
+        <div class="status-bar">
+          <span id="loadStatus">loading</span>
+          <label class="file-label" for="fileInput">选择 JSON</label>
+          <input id="fileInput" type="file" accept=".json,application/json" />
+          <button id="resetButton" class="small-button" type="button">重置筛选</button>
+        </div>
+      </div>
+      <div class="metrics" id="metrics"></div>
+    </header>
+
+    <main>
+      <aside>
+        <div class="filters">
+          <input id="searchInput" type="search" placeholder="搜索 qid / db / question / SQL" />
+          <div class="filter-row">
+            <select id="dbFilter"></select>
+            <select id="statusFilter">
+              <option value="all">全部状态</option>
+              <option value="pred_error">pred 执行错误</option>
+              <option value="gold_error">gold 执行错误</option>
+              <option value="unfinished">未终止</option>
+              <option value="fallback">fallback</option>
+              <option value="row_mismatch">行数不同</option>
+              <option value="empty_pred">空预测 SQL</option>
+            </select>
+          </div>
+          <div class="filter-row">
+            <select id="roundFilter">
+              <option value="all">全部轮数</option>
+              <option value="lt6">少于 6 轮</option>
+              <option value="eq10">10 轮</option>
+              <option value="gte8">8 轮及以上</option>
+            </select>
+            <select id="sortSelect">
+              <option value="idx">按原顺序</option>
+              <option value="qid">按 qid</option>
+              <option value="db">按 db</option>
+              <option value="rounds_desc">按轮数降序</option>
+              <option value="pred_error_first">执行错误优先</option>
+            </select>
+          </div>
+          <div class="case-count">
+            <span id="caseCount">0 cases</span>
+            <span id="selectedHint"></span>
+          </div>
+        </div>
+        <div class="case-list" id="caseList"></div>
+      </aside>
+
+      <section class="detail">
+        <div class="detail-inner" id="detail"></div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const DEFAULT_JSON = 'wrong_details.pretty.json';
+    let records = [];
+    let filtered = [];
+    let selectedId = null;
+
+    const els = {
+      metrics: document.getElementById('metrics'),
+      loadStatus: document.getElementById('loadStatus'),
+      sourceLine: document.getElementById('sourceLine'),
+      fileInput: document.getElementById('fileInput'),
+      resetButton: document.getElementById('resetButton'),
+      searchInput: document.getElementById('searchInput'),
+      dbFilter: document.getElementById('dbFilter'),
+      statusFilter: document.getElementById('statusFilter'),
+      roundFilter: document.getElementById('roundFilter'),
+      sortSelect: document.getElementById('sortSelect'),
+      caseCount: document.getElementById('caseCount'),
+      selectedHint: document.getElementById('selectedHint'),
+      caseList: document.getElementById('caseList'),
+      detail: document.getElementById('detail'),
+    };
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function formatNumber(value) {
+      if (value === null || value === undefined || Number.isNaN(value)) return 'null';
+      if (typeof value === 'number') return String(value);
+      return String(value);
+    }
+
+    function shortText(value, max = 160) {
+      const text = String(value ?? '').replace(/\s+/g, ' ').trim();
+      return text.length > max ? text.slice(0, max - 1) + '…' : text;
+    }
+
+    function caseId(record) {
+      return String(record.question_id ?? record.idx);
+    }
+
+    function getBadges(record) {
+      const badges = [];
+      if (record.pred_ok === false) badges.push(['danger', 'pred error']);
+      if (record.gold_ok === false) badges.push(['danger', 'gold error']);
+      if (record.terminated === false) badges.push(['warn', 'not terminated']);
+      if (record.used_fallback_sql) badges.push(['warn', 'fallback']);
+      if (!String(record.pred_sql || '').trim()) badges.push(['danger', 'empty pred']);
+      if (record.pred_row_count !== record.gold_row_count) badges.push(['info', `rows ${formatNumber(record.pred_row_count)} / ${formatNumber(record.gold_row_count)}`]);
+      if (record.pred_ok && record.gold_ok && record.pred_row_count === record.gold_row_count) badges.push(['ok', `rows ${formatNumber(record.pred_row_count)}`]);
+      badges.push(['', `${formatNumber(record.rounds)} rounds`]);
+      return badges;
+    }
+
+    function badgeHtml(kind, text) {
+      return `<span class="badge ${kind}">${escapeHtml(text)}</span>`;
+    }
+
+    function computeMetrics(data) {
+      const total = data.length;
+      const predErrors = data.filter(r => r.pred_ok === false).length;
+      const goldErrors = data.filter(r => r.gold_ok === false).length;
+      const unfinished = data.filter(r => r.terminated === false).length;
+      const fallback = data.filter(r => r.used_fallback_sql).length;
+      const rowMismatch = data.filter(r => r.pred_row_count !== r.gold_row_count).length;
+      return [
+        ['错题', total],
+        ['pred 执行错误', predErrors],
+        ['gold 执行错误', goldErrors],
+        ['未终止', unfinished],
+        ['fallback', fallback],
+        ['行数不同', rowMismatch],
+      ];
+    }
+
+    function renderMetrics(data) {
+      els.metrics.innerHTML = computeMetrics(data).map(([label, value]) => `
+        <div class="metric"><span class="value">${formatNumber(value)}</span><span class="label">${escapeHtml(label)}</span></div>
+      `).join('');
+    }
+
+    function populateDbFilter(data) {
+      const current = els.dbFilter.value || 'all';
+      const dbs = [...new Set(data.map(r => r.db_id).filter(Boolean))].sort();
+      els.dbFilter.innerHTML = '<option value="all">全部数据库</option>' + dbs.map(db => `<option value="${escapeHtml(db)}">${escapeHtml(db)}</option>`).join('');
+      if (dbs.includes(current)) els.dbFilter.value = current;
+    }
+
+    function recordSearchText(record) {
+      return [
+        record.question_id,
+        record.db_id,
+        record.question,
+        record.evidence,
+        record.gold_sql,
+        record.pred_sql,
+        record.pred_error,
+        record.gold_error,
+      ].join('\n').toLowerCase();
+    }
+
+    function passesStatus(record, status) {
+      if (status === 'all') return true;
+      if (status === 'pred_error') return record.pred_ok === false;
+      if (status === 'gold_error') return record.gold_ok === false;
+      if (status === 'unfinished') return record.terminated === false;
+      if (status === 'fallback') return !!record.used_fallback_sql;
+      if (status === 'row_mismatch') return record.pred_row_count !== record.gold_row_count;
+      if (status === 'empty_pred') return !String(record.pred_sql || '').trim();
+      return true;
+    }
+
+    function passesRound(record, filter) {
+      const rounds = Number(record.rounds ?? 0);
+      if (filter === 'all') return true;
+      if (filter === 'lt6') return rounds < 6;
+      if (filter === 'eq10') return rounds === 10;
+      if (filter === 'gte8') return rounds >= 8;
+      return true;
+    }
+
+    function applyFilters() {
+      const q = els.searchInput.value.trim().toLowerCase();
+      const db = els.dbFilter.value;
+      const status = els.statusFilter.value;
+      const round = els.roundFilter.value;
+
+      filtered = records.filter(record => {
+        if (db !== 'all' && record.db_id !== db) return false;
+        if (!passesStatus(record, status)) return false;
+        if (!passesRound(record, round)) return false;
+        if (q && !recordSearchText(record).includes(q)) return false;
+        return true;
+      });
+
+      const sort = els.sortSelect.value;
+      filtered.sort((a, b) => {
+        if (sort === 'qid') return String(a.question_id).localeCompare(String(b.question_id), undefined, { numeric: true });
+        if (sort === 'db') return String(a.db_id).localeCompare(String(b.db_id)) || Number(a.idx ?? 0) - Number(b.idx ?? 0);
+        if (sort === 'rounds_desc') return Number(b.rounds ?? 0) - Number(a.rounds ?? 0) || Number(a.idx ?? 0) - Number(b.idx ?? 0);
+        if (sort === 'pred_error_first') return Number(a.pred_ok === true) - Number(b.pred_ok === true) || Number(a.idx ?? 0) - Number(b.idx ?? 0);
+        return Number(a.idx ?? 0) - Number(b.idx ?? 0);
+      });
+
+      if (!filtered.some(r => caseId(r) === selectedId)) selectedId = filtered[0] ? caseId(filtered[0]) : null;
+      renderCaseList();
+      renderDetail(getSelectedRecord());
+    }
+
+    function renderCaseList() {
+      els.caseCount.textContent = `${filtered.length} / ${records.length} cases`;
+      els.selectedHint.textContent = selectedId ? `qid ${selectedId}` : '';
+      if (!filtered.length) {
+        els.caseList.innerHTML = '<div class="empty-state">没有匹配的样本。</div>';
+        return;
+      }
+      els.caseList.innerHTML = filtered.map(record => {
+        const id = caseId(record);
+        const active = id === selectedId ? ' active' : '';
+        const badges = getBadges(record).map(([kind, text]) => badgeHtml(kind, text)).join('');
+        return `
+          <button class="case-item${active}" data-id="${escapeHtml(id)}" type="button">
+            <div class="case-title">
+              <span class="qid">qid ${escapeHtml(id)}</span>
+              <span class="db-name">${escapeHtml(record.db_id)}</span>
+            </div>
+            <div class="question-snippet">${escapeHtml(shortText(record.question, 170))}</div>
+            <div class="badges">${badges}</div>
+          </button>
+        `;
+      }).join('');
+    }
+
+    function getSelectedRecord() {
+      return filtered.find(r => caseId(r) === selectedId) || null;
+    }
+
+    function renderSqlPane(title, sql, type) {
+      return `
+        <div class="compare-pane">
+          <div class="pane-title">
+            <span>${escapeHtml(title)}</span>
+            <button class="copy-button" type="button" data-copy="${escapeHtml(sql || '')}">copy</button>
+          </div>
+          <pre class="sql-code">${escapeHtml(sql || '')}</pre>
+        </div>
+      `;
+    }
+
+    function renderResultPane(title, result) {
+      const safe = result || {};
+      const columns = Array.isArray(safe.columns) ? safe.columns : [];
+      const rows = Array.isArray(safe.rows) ? safe.rows : [];
+      const meta = [
+        badgeHtml(safe.ok ? 'ok' : 'danger', safe.ok ? 'ok' : 'error'),
+        badgeHtml('', `rows ${formatNumber(safe.row_count)}`),
+        safe.truncated ? badgeHtml('warn', 'truncated') : badgeHtml('', 'not truncated'),
+      ].join('');
+      let body = '';
+      if (safe.error) {
+        body += `<div class="error-panel">${escapeHtml(safe.error)}</div>`;
+      }
+      if (!columns.length) {
+        body += '<div class="empty-state">无列信息。</div>';
+      } else if (!rows.length) {
+        body += '<div class="empty-state">结果为空。</div>';
+      } else {
+        body += `<div class="table-wrap"><table><thead><tr>${columns.map(c => `<th>${escapeHtml(c)}</th>`).join('')}</tr></thead><tbody>`;
+        body += rows.map(row => `<tr>${columns.map((_, i) => `<td>${escapeHtml(formatNumber(Array.isArray(row) ? row[i] : ''))}</td>`).join('')}</tr>`).join('');
+        body += '</tbody></table></div>';
+      }
+      return `
+        <div class="compare-pane">
+          <div class="pane-title"><span>${escapeHtml(title)}</span></div>
+          <div class="result-meta">${meta}</div>
+          ${body}
+        </div>
+      `;
+    }
+
+    function renderKvGrid(record) {
+      const items = [
+        ['qid', record.question_id],
+        ['db', record.db_id],
+        ['rounds', record.rounds],
+        ['terminated', record.terminated],
+        ['fallback', record.used_fallback_sql],
+        ['pred_ok', record.pred_ok],
+        ['gold_ok', record.gold_ok],
+        ['latency', record.total_llm_latency ? `${Number(record.total_llm_latency).toFixed(2)}s` : null],
+      ];
+      return `<div class="kv-grid">${items.map(([k, v]) => `<div class="kv"><span class="k">${escapeHtml(k)}</span><span class="v">${escapeHtml(formatNumber(v))}</span></div>`).join('')}</div>`;
+    }
+
+    function maybeBlock(title, content, cls = 'text-code') {
+      if (content === null || content === undefined || content === '') return '';
+      return `
+        <div class="compare-pane">
+          <div class="pane-title"><span>${escapeHtml(title)}</span></div>
+          <pre class="${cls}">${escapeHtml(typeof content === 'string' ? content : JSON.stringify(content, null, 2))}</pre>
+        </div>
+      `;
+    }
+
+    function renderToolResult(result) {
+      if (!result) return '';
+      const columns = Array.isArray(result.columns) ? result.columns : [];
+      const rows = Array.isArray(result.rows) ? result.rows : [];
+      const meta = [
+        badgeHtml(result.ok ? 'ok' : 'danger', result.ok ? 'tool ok' : 'tool error'),
+        badgeHtml('', `rows ${formatNumber(result.row_count ?? rows.length)}`),
+        result.truncated ? badgeHtml('warn', 'truncated') : '',
+      ].join('');
+      let table = '';
+      if (result.error) table += `<div class="error-panel">${escapeHtml(result.error)}</div>`;
+      if (columns.length && rows.length) {
+        table += `<div class="table-wrap"><table><thead><tr>${columns.map(c => `<th>${escapeHtml(c)}</th>`).join('')}</tr></thead><tbody>`;
+        table += rows.map(row => `<tr>${columns.map((_, i) => `<td>${escapeHtml(formatNumber(Array.isArray(row) ? row[i] : ''))}</td>`).join('')}</tr>`).join('');
+        table += '</tbody></table></div>';
+      }
+      return `<div class="compare-pane"><div class="pane-title"><span>tool_result</span></div><div class="result-meta">${meta}</div>${table || '<div class="empty-state">无表格结果。</div>'}</div>`;
+    }
+
+    function renderConversation(record) {
+      const turns = Array.isArray(record.conversation) ? record.conversation : [];
+      if (!turns.length) return '<div class="empty-state">没有 conversation。</div>';
+      return turns.map((turn, index) => {
+        const assistant = turn.assistant || {};
+        const action = assistant.action || 'missing_action';
+        const open = index === turns.length - 1 ? ' open' : '';
+        const toolCall = assistant.tool_call;
+        const toolSql = toolCall && toolCall.arguments ? toolCall.arguments.sql : null;
+        const bodyParts = [
+          maybeBlock('think', assistant.think),
+          maybeBlock('tool_call SQL', toolSql, 'sql-code'),
+          maybeBlock('schema', assistant.schema, 'json-code'),
+          maybeBlock('answer_sql', assistant.answer_sql, 'sql-code'),
+          maybeBlock('observation', turn.observation),
+          renderToolResult(turn.tool_result),
+          maybeBlock('raw_message', turn.raw_message, 'json-code'),
+        ].filter(Boolean).join('');
+        const badges = [
+          badgeHtml(action === 'missing_action' ? 'danger' : 'info', action),
+          turn.error ? badgeHtml('danger', 'format error') : '',
+          badgeHtml('', `${formatNumber(turn.latency ? Number(turn.latency).toFixed(2) : null)}s`),
+        ].join('');
+        return `
+          <details class="round"${open}>
+            <summary>
+              <span class="round-title"><strong>Round ${escapeHtml(turn.round ?? index + 1)}</strong>${badges}</span>
+              <span class="badge">展开</span>
+            </summary>
+            <div class="round-body">${bodyParts || '<div class="empty-state">这一轮没有可展示内容。</div>'}</div>
+          </details>
+        `;
+      }).join('');
+    }
+
+    function renderDetail(record) {
+      if (!record) {
+        els.detail.innerHTML = '<div class="empty-state">没有选中的样本。</div>';
+        return;
+      }
+      const badges = getBadges(record).map(([kind, text]) => badgeHtml(kind, text)).join('');
+      els.detail.innerHTML = `
+        <div class="section">
+          <div class="section-header">
+            <div class="case-heading">
+              <h2>qid ${escapeHtml(record.question_id)} · ${escapeHtml(record.db_id)}</h2>
+              <div class="badges">${badges}</div>
+            </div>
+          </div>
+          <div class="section-body stack">
+            <p class="question-text">${escapeHtml(record.question)}</p>
+            ${record.evidence ? `<p class="evidence-text">${escapeHtml(record.evidence)}</p>` : ''}
+            ${renderKvGrid(record)}
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-header"><h3 class="section-title">SQL 对照</h3></div>
+          <div class="section-body compare-grid">
+            ${renderSqlPane('gold_sql', record.gold_sql, 'gold')}
+            ${renderSqlPane('pred_sql', record.pred_sql, 'pred')}
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-header"><h3 class="section-title">执行结果对照</h3></div>
+          <div class="section-body compare-grid">
+            ${renderResultPane('gold_result', record.gold_result)}
+            ${renderResultPane('pred_result', record.pred_result)}
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-header"><h3 class="section-title">Conversation Timeline</h3></div>
+          <div class="section-body">${renderConversation(record)}</div>
+        </div>
+      `;
+    }
+
+    function loadData(data, sourceName) {
+      if (!Array.isArray(data)) throw new Error('JSON 顶层必须是数组');
+      records = data;
+      selectedId = records[0] ? caseId(records[0]) : null;
+      populateDbFilter(records);
+      renderMetrics(records);
+      els.sourceLine.textContent = `source: ${sourceName}`;
+      els.loadStatus.textContent = `loaded ${records.length}`;
+      applyFilters();
+    }
+
+    async function autoLoad() {
+      try {
+        const response = await fetch(DEFAULT_JSON, { cache: 'no-store' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        loadData(data, DEFAULT_JSON);
+      } catch (error) {
+        els.loadStatus.textContent = '请选择 JSON';
+        els.detail.innerHTML = `<div class="error-panel">无法自动读取 ${escapeHtml(DEFAULT_JSON)}。如果你是直接打开 HTML，请点击右上角“选择 JSON”。</div>`;
+        renderMetrics([]);
+        populateDbFilter([]);
+        applyFilters();
+      }
+    }
+
+    els.fileInput.addEventListener('change', async event => {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      try {
+        const data = JSON.parse(await file.text());
+        loadData(data, file.name);
+      } catch (error) {
+        els.loadStatus.textContent = 'load failed';
+        els.detail.innerHTML = `<div class="error-panel">${escapeHtml(error.message)}</div>`;
+      }
+    });
+
+    els.resetButton.addEventListener('click', () => {
+      els.searchInput.value = '';
+      els.dbFilter.value = 'all';
+      els.statusFilter.value = 'all';
+      els.roundFilter.value = 'all';
+      els.sortSelect.value = 'idx';
+      selectedId = records[0] ? caseId(records[0]) : null;
+      applyFilters();
+    });
+
+    [els.searchInput, els.dbFilter, els.statusFilter, els.roundFilter, els.sortSelect].forEach(el => {
+      el.addEventListener('input', applyFilters);
+      el.addEventListener('change', applyFilters);
+    });
+
+    els.caseList.addEventListener('click', event => {
+      const button = event.target.closest('.case-item');
+      if (!button) return;
+      selectedId = button.dataset.id;
+      renderCaseList();
+      renderDetail(getSelectedRecord());
+    });
+
+    document.addEventListener('click', async event => {
+      const button = event.target.closest('[data-copy]');
+      if (!button) return;
+      try {
+        await navigator.clipboard.writeText(button.dataset.copy || '');
+        const old = button.textContent;
+        button.textContent = 'copied';
+        setTimeout(() => { button.textContent = old; }, 900);
+      } catch (error) {
+        button.textContent = 'failed';
+      }
+    });
+
+    autoLoad();
+  </script>
+</body>
+</html>
