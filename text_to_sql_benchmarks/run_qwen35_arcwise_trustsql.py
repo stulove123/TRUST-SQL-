@@ -830,7 +830,7 @@ SELECT ...;
 """
 
 
-def call_model(
+def call_model_with_metadata(
     client: httpx.Client,
     *,
     base_url: str,
@@ -843,7 +843,7 @@ def call_model(
     llm_retries: int,
     retry_sleep: float,
     enable_thinking: bool,
-) -> tuple[str, str | None, float]:
+) -> tuple[str, str | None, float, dict[str, Any]]:
     started = time.perf_counter()
     last_error: Exception | None = None
     for attempt in range(llm_retries + 1):
@@ -864,19 +864,54 @@ def call_model(
             )
             response.raise_for_status()
             payload = response.json()
-            message = payload["choices"][0]["message"]
+            choice = payload["choices"][0]
+            message = choice["message"]
             reasoning_content = (
                 message.get("reasoning_content")
                 or message.get("reasoning")
                 or message.get("reasoning_text")
             )
             content = normalize_think_tags(message.get("content") or "")
-            return content, reasoning_content, time.perf_counter() - started
+            response_metadata = {
+                "finish_reason": choice.get("finish_reason"),
+                "usage": payload.get("usage") or {},
+            }
+            return content, reasoning_content, time.perf_counter() - started, response_metadata
         except Exception as exc:
             last_error = exc
             if attempt < llm_retries:
                 time.sleep(retry_sleep)
     raise RuntimeError(f"LLM call failed after {llm_retries + 1} attempt(s): {last_error}") from last_error
+
+
+def call_model(
+    client: httpx.Client,
+    *,
+    base_url: str,
+    api_key: str,
+    model: str,
+    messages: list[dict[str, str]],
+    max_tokens: int | None,
+    temperature: float,
+    top_p: float,
+    llm_retries: int,
+    retry_sleep: float,
+    enable_thinking: bool,
+) -> tuple[str, str | None, float]:
+    content, reasoning_content, latency, _ = call_model_with_metadata(
+        client,
+        base_url=base_url,
+        api_key=api_key,
+        model=model,
+        messages=messages,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        top_p=top_p,
+        llm_retries=llm_retries,
+        retry_sleep=retry_sleep,
+        enable_thinking=enable_thinking,
+    )
+    return content, reasoning_content, latency
 
 
 def run_trustsql_episode(

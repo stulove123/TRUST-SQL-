@@ -19,6 +19,7 @@ from run_qwen35_arcwise_trustsql import (
     DEFAULT_MODEL,
     build_eval_result,
     call_model,
+    call_model_with_metadata,
     execute_eval_sql,
     extract_sql,
     extract_think,
@@ -61,12 +62,15 @@ INSPECT_ROWS_MAX_FILTERS = 6
 INSPECT_ROWS_MAX_ORDER_BY = 2
 INSPECT_ROWS_MAX_IN_VALUES = 50
 INSPECT_ROWS_MAX_ROWS = 50
+INSPECT_ROWS_MAX_JOINS = 2
 JOIN_CANDIDATE_MAX_WORK_SECONDS = 7.0
 JOIN_CANDIDATE_STATS_TIMEOUT_SECONDS = 1.0
 JOIN_CANDIDATE_FULL_TIMEOUT_SECONDS = 4.0
 JOIN_CANDIDATE_SAMPLE_TIMEOUT_SECONDS = 2.0
 JOIN_CANDIDATE_SAMPLE_DISTINCT_KEYS = 2_000
 PROJECTION_RELAXED_MAX_MAPPING_NODES = 100_000
+MISSING_TOOL_CALL_ERROR = "missing_tool_call"
+REASONING_EXHAUSTED_ERROR = "reasoning_exhausted"
 
 
 AGENT_COMMON_PROMPT = """# Role
@@ -136,25 +140,28 @@ joins, aggregation, or final answers. Use inspect_rows for bounded row lookup.
 ## inspect_rows
 Example (single table):
 <think>I need the user ID and reputation from the same row as the verified display name.</think>
-<tool_call>{"name": "inspect_rows", "arguments": {"db_id": "...", "table": "users", "alias": "u", "columns": ["u.Id", "u.DisplayName", "u.Reputation"], "filters": [{"column": "u.DisplayName", "op": "=", "value": "Harlan"}], "join": null, "order_by": [{"column": "u.Id", "direction": "ASC"}], "limit": 20}}</tool_call>
-Example (one verified join):
-<think>I need the race ID from the row whose name and year match the target race.</think>
-<tool_call>{"name": "inspect_rows", "arguments": {"db_id": "...", "table": "races", "alias": "r", "columns": ["r.raceId", "r.name", "r.year"], "filters": [{"column": "r.name", "op": "=", "value": "Spanish Grand Prix"}, {"column": "r.year", "op": "=", "value": 2009}], "join": null, "order_by": [{"column": "r.raceId", "direction": "ASC"}], "limit": 20}}</tool_call>
+<tool_call>{"name": "inspect_rows", "arguments": {"db_id": "...", "table": "users", "alias": "u", "columns": ["u.Id", "u.DisplayName", "u.Reputation"], "filters": [{"column": "u.DisplayName", "op": "=", "value": "Harlan"}], "joins": [], "order_by": [{"column": "u.Id", "direction": "ASC"}], "limit": 20}}</tool_call>
+Example (two verified joins):
+<think>I need bounded fields connected through two independently verified relationships.</think>
+<tool_call>{"name": "inspect_rows", "arguments": {"db_id": "...", "table": "table1", "alias": "a", "columns": ["a.name", "c.value"], "filters": [{"column": "c.language", "op": "=", "value": "French"}], "joins": [{"table": "table2", "alias": "b", "type": "INNER", "on": {"left": "a.key", "right": "b.key"}}, {"table": "table3", "alias": "c", "type": "INNER", "on": {"left": "b.key", "right": "c.key"}}], "order_by": [], "limit": 20}}</tool_call>
 Purpose: retrieve bounded real rows containing multiple related fields.
 Use when: you need a name-to-ID mapping, associated fields, a conditionally
-matched key, or a bounded lookup across one verified relationship.
+matched key, or a bounded lookup across one or two verified relationships.
 Arguments:
 - table and alias: the base table and a simple SQL alias.
 - columns: 1-8 qualified fields, for example ["u.Id", "u.Reputation"].
 - filters: 1-6 AND-connected predicates. Supported operators are =, !=, <,
   <=, >, >=, LIKE, IN, IS NULL, and IS NOT NULL.
-- join: null, or one object with table, alias, type (INNER or LEFT), and
-  on: {"left": "base_or_join_alias.column", "right": "..."}.
+- joins: a list containing zero, one, or two objects with table, alias, type
+  (INNER or LEFT), and on: {"left": "existing_alias.column", "right":
+  "new_alias.column"}. Each item introduces one new alias and must connect it
+  to the base alias or an alias introduced by an earlier item.
 - order_by: optional 0-2 qualified fields with ASC or DESC.
 - limit: optional, capped at 50.
-The environment constructs read-only SQL. No expressions, aggregates,
-subqueries, or second join are allowed. A join must be a declared foreign key or
-a high/medium-confidence inspect_join_candidate pair from this episode.
+The environment constructs read-only SQL. No expressions, aggregates, or
+subqueries are allowed. Every join edge is checked independently and must be a
+declared foreign key or a high/medium-confidence inspect_join_candidate pair
+from this episode.
 Returns: compact tab-separated fields and rows; SQL NULL is rendered as NULL.
 Do not use for: final answer execution, aggregation, unrestricted table scans,
 or exploring a single column's value vocabulary; use inspect_value for the
@@ -912,9 +919,25 @@ def run_inspect_rows(
     limit_cap = max(1, min(int(max_rows), INSPECT_ROWS_MAX_ROWS))
     limit = max(1, min(requested_limit, limit_cap))
 
-    raw_join = args.get("join")
-    if raw_join is not None and not isinstance(raw_join, dict):
-        return tool_result(ok=False, error="inspect_rows join must be null or an object")
+    raw_joins_arg = args.get("joins")
+    legacy_join = args.get("join")
+    if raw_joins_arg is not None and legacy_join is not None:
+        return tool_result(ok=False, error="inspect_rows accepts joins or legacy join, not both")
+    if raw_joins_arg is None:
+        if legacy_join is not None and not isinstance(legacy_join, dict):
+            return tool_result(ok=False, error="inspect_rows legacy join must be null or an object")
+        raw_joins = [] if legacy_join is None else [legacy_join]
+    else:
+        if not isinstance(raw_joins_arg, list):
+            return tool_result(ok=False, error="inspect_rows joins must be a list")
+        raw_joins = raw_joins_arg
+    if len(raw_joins) > INSPECT_ROWS_MAX_JOINS:
+        return tool_result(
+            ok=False,
+            error=f"inspect_rows supports at most {INSPECT_ROWS_MAX_JOINS} joins",
+        )
+    if not all(isinstance(raw_join, dict) for raw_join in raw_joins):
+        return tool_result(ok=False, error="inspect_rows each joins item must be an object")
 
     started = time.perf_counter()
     conn: sqlite3.Connection | None = None
@@ -940,8 +963,8 @@ def run_inspect_rows(
             return columns_by_table[table_name]
 
         aliases: dict[str, str] = {str(base_alias): base_table}
-        join_sql = ""
-        join_validation: dict[str, Any] | None = None
+        join_sql_parts: list[str] = []
+        join_validations: list[dict[str, Any]] = []
 
         def parse_field_ref(raw: Any, *, argument_name: str) -> tuple[str, str] | None:
             if not isinstance(raw, str) or raw.count(".") != 1:
@@ -994,45 +1017,73 @@ def run_inspect_rows(
                     return True
             return False
 
-        if raw_join is not None:
+        for join_index, raw_join in enumerate(raw_joins):
+            join_path = f"joins[{join_index}]"
             join_table = raw_join.get("table")
             join_alias_raw = raw_join.get("alias")
             if not isinstance(join_table, str) or not join_table.strip():
-                return tool_result(ok=False, error="inspect_rows join requires a non-empty table string")
+                return tool_result(
+                    ok=False,
+                    error=f"inspect_rows {join_path} requires a non-empty table string",
+                )
             join_table = join_table.strip()
             join_alias, join_alias_error = valid_alias(
                 join_alias_raw.strip() if isinstance(join_alias_raw, str) else None,
-                "join.alias",
+                f"{join_path}.alias",
             )
             if join_alias_error:
                 return tool_result(ok=False, error=join_alias_error)
             if join_table not in table_names:
-                return tool_result(ok=False, error=f"no such join table: {join_table}")
+                return tool_result(ok=False, error=f"no such {join_path} table: {join_table}")
             if join_alias in aliases:
-                return tool_result(ok=False, error="inspect_rows base and join aliases must differ")
+                return tool_result(
+                    ok=False,
+                    error=f"inspect_rows {join_path}.alias {join_alias!r} is already in use",
+                )
 
             join_type = str(raw_join.get("type", "INNER")).upper().strip()
             if join_type not in {"INNER", "LEFT"}:
-                return tool_result(ok=False, error="inspect_rows join.type must be INNER or LEFT")
+                return tool_result(
+                    ok=False,
+                    error=f"inspect_rows {join_path}.type must be INNER or LEFT",
+                )
             raw_on = raw_join.get("on")
             if not isinstance(raw_on, dict):
-                return tool_result(ok=False, error="inspect_rows join requires on.left and on.right")
+                return tool_result(
+                    ok=False,
+                    error=f"inspect_rows {join_path} requires on.left and on.right",
+                )
 
+            existing_aliases = set(aliases)
             aliases[str(join_alias)] = join_table
-            left_ref = parse_field_ref(raw_on.get("left"), argument_name="join.on.left")
-            right_ref = parse_field_ref(raw_on.get("right"), argument_name="join.on.right")
+            left_ref = parse_field_ref(
+                raw_on.get("left"), argument_name=f"{join_path}.on.left"
+            )
+            right_ref = parse_field_ref(
+                raw_on.get("right"), argument_name=f"{join_path}.on.right"
+            )
             if left_ref is None or right_ref is None:
                 return tool_result(
                     ok=False,
                     error=(
-                        "inspect_rows join.on fields must be existing qualified columns from the "
-                        "base and join aliases"
+                        f"inspect_rows {join_path}.on fields must be existing qualified columns "
+                        "from aliases introduced up to this join"
                     ),
                 )
-            if {left_ref[0], right_ref[0]} != {str(base_alias), str(join_alias)}:
+            left_alias, right_alias = left_ref[0], right_ref[0]
+            if left_alias == str(join_alias):
+                prior_alias = right_alias
+            elif right_alias == str(join_alias):
+                prior_alias = left_alias
+            else:
+                prior_alias = None
+            if prior_alias not in existing_aliases:
                 return tool_result(
                     ok=False,
-                    error="inspect_rows join.on must connect the base alias and the join alias",
+                    error=(
+                        f"inspect_rows {join_path}.on must connect new alias {join_alias!r} "
+                        "to the base alias or an alias introduced by an earlier join"
+                    ),
                 )
 
             join_pair = canonical_join_pair(
@@ -1044,19 +1095,27 @@ def run_inspect_rows(
                 return tool_result(
                     ok=False,
                     error=(
-                        "inspect_rows join is not a declared foreign key and has not been verified by a "
-                        "high/medium-confidence inspect_join_candidate call in this episode"
+                        f"inspect_rows {join_path} is not a declared foreign key and has not "
+                        "been verified by a high/medium-confidence inspect_join_candidate "
+                        "call in this episode"
                     ),
                 )
-            join_sql = (
+            join_sql_parts.append(
                 f" {join_type} JOIN {quote_ident(join_table)} AS {quote_ident(str(join_alias))} "
                 f"ON {field_sql(left_ref)} = {field_sql(right_ref)}"
             )
-            join_validation = {
-                "left": f"{aliases[left_ref[0]]}.{left_ref[1]}",
-                "right": f"{aliases[right_ref[0]]}.{right_ref[1]}",
-                "validation": "declared_foreign_key" if is_declared_fk else "verified_join_candidate",
-            }
+            join_validations.append(
+                {
+                    "index": join_index,
+                    "left": f"{aliases[left_ref[0]]}.{left_ref[1]}",
+                    "right": f"{aliases[right_ref[0]]}.{right_ref[1]}",
+                    "validation": (
+                        "declared_foreign_key"
+                        if is_declared_fk
+                        else "verified_join_candidate"
+                    ),
+                }
+            )
 
         selected_fields: list[dict[str, str]] = []
         select_sql_parts: list[str] = []
@@ -1164,7 +1223,7 @@ def run_inspect_rows(
         sql = (
             f"SELECT {', '.join(select_sql_parts)} "
             f"FROM {quote_ident(base_table)} AS {quote_ident(str(base_alias))}"
-            f"{join_sql} WHERE {' AND '.join(where_parts)}"
+            f"{''.join(join_sql_parts)} WHERE {' AND '.join(where_parts)}"
         )
         if order_sql_parts:
             sql += f" ORDER BY {', '.join(order_sql_parts)}"
@@ -1172,7 +1231,12 @@ def run_inspect_rows(
 
         rows = conn.execute(sql, params).fetchall()
         result_columns = [field["field"] for field in selected_fields]
-        return {"ok": True, "columns": result_columns, "rows": rows[:limit]}
+        return {
+            "ok": True,
+            "columns": result_columns,
+            "rows": rows[:limit],
+            "join_validations": join_validations,
+        }
     except Exception as exc:
         return tool_result(ok=False, error=str(exc), elapsed=time.perf_counter() - started)
     finally:
@@ -1893,7 +1957,7 @@ def format_sql_execution_observation(result: dict[str, Any], max_chars: int) -> 
 def parse_tool_call(text: str) -> tuple[dict[str, Any] | None, str | None]:
     match = TOOL_CALL_RE.search(text or "")
     if not match:
-        return None, "missing <tool_call>...</tool_call>"
+        return None, MISSING_TOOL_CALL_ERROR
     raw = match.group(1).strip()
     try:
         payload = json.loads(raw)
@@ -1908,6 +1972,30 @@ def parse_tool_call(text: str) -> tuple[dict[str, Any] | None, str | None]:
     if not isinstance(arguments, dict):
         return None, "tool_call.arguments must be a JSON object"
     return {"name": name.strip(), "arguments": arguments}, None
+
+
+def response_exhausted_during_reasoning(
+    *,
+    assistant_text: str,
+    reasoning_content: str | None,
+    response_metadata: dict[str, Any],
+    max_tokens: int | None,
+) -> bool:
+    """Detect a completion budget consumed before a complete tool call was emitted."""
+    if not assistant_text.strip() and not (reasoning_content or "").strip():
+        return False
+
+    finish_reason = str(response_metadata.get("finish_reason") or "").lower()
+    if finish_reason == "length":
+        return True
+
+    usage = response_metadata.get("usage") or {}
+    completion_tokens = usage.get("completion_tokens")
+    return (
+        max_tokens is not None
+        and isinstance(completion_tokens, int)
+        and completion_tokens >= max_tokens
+    )
 
 
 def validate_db_id(tool_call: dict[str, Any], db_id: str) -> str | None:
@@ -2066,6 +2154,33 @@ def build_invalid_feedback_with_allowed(stage: str, error: str, allowed: list[st
         f"Allowed tools: {', '.join(allowed)}\n"
         "Respond again using exactly:\n"
         '<think>brief reasoning</think>\n'
+        '<tool_call>{"name": "TOOL_NAME", "arguments": {...}}</tool_call>'
+    )
+
+
+def build_missing_tool_call_feedback(stage: str, allowed: list[str]) -> str:
+    return (
+        "Invalid response: generation completed without one complete "
+        "<tool_call>...</tool_call> block.\n"
+        f"Current stage: {stage}\n"
+        f"Allowed tools: {', '.join(allowed)}\n"
+        "Do not output analysis alone. Respond again using exactly:\n"
+        "<think>brief reasoning</think>\n"
+        '<tool_call>{"name": "TOOL_NAME", "arguments": {...}}</tool_call>'
+    )
+
+
+def build_reasoning_exhausted_feedback(stage: str, allowed: list[str]) -> str:
+    return (
+        "Generation error: the previous response exhausted its completion budget "
+        "while reasoning before producing a complete tool call. No tool "
+        "was executed.\n"
+        f"Current stage: {stage}\n"
+        f"Allowed tools: {', '.join(allowed)}\n"
+        "Do not restart or repeat the full analysis. Use the existing working "
+        "memory, keep reasoning to one short sentence, and immediately emit "
+        "exactly one allowed tool call:\n"
+        "<think>one short sentence</think>\n"
         '<tool_call>{"name": "TOOL_NAME", "arguments": {...}}</tool_call>'
     )
 
@@ -2293,6 +2408,7 @@ def build_agent_user_message(
     memory: str,
     last_observation: str,
     format_error_feedback: str,
+    reasoning_exhausted_feedback: str,
     sql_execution_error_feedback: str,
     total_remaining: int,
     stage_remaining: int,
@@ -2336,6 +2452,15 @@ def build_agent_user_message(
             "correct the response format in this round:\n"
             f"{format_error_feedback}\n"
         )
+    reasoning_exhausted_note = ""
+    if reasoning_exhausted_feedback:
+        reasoning_exhausted_note = (
+            "\n# Previous Round Reasoning Exhaustion\n"
+            "The previous generation used its completion budget before emitting a "
+            "visible tool call. Follow the recovery instruction below instead of "
+            "repeating the full analysis:\n"
+            f"{reasoning_exhausted_feedback}\n"
+        )
     sql_execution_error_note = ""
     if sql_execution_error_feedback:
         sql_execution_error_note = (
@@ -2364,6 +2489,7 @@ Remaining schema return budget: {returns_remaining}
 # Working Memory m_t
 {memory or "空"}
 {format_error_note}
+{reasoning_exhausted_note}
 {sql_execution_error_note}
 
 Now choose exactly one allowed tool for the current stage."""
@@ -2503,6 +2629,8 @@ def execute_twostage_tool(
     structured_event: dict[str, Any] | None = None
     if name == "execute_sql" and result.get("ok"):
         structured_event = {"candidate_sql": executed_sql}
+    elif name == "inspect_rows" and result.get("ok") and result.get("join_validations"):
+        structured_event = {"join_validations": result["join_validations"]}
     elif verified_join_pair_event:
         structured_event = {"verified_join_pair": verified_join_pair_event}
     return result, observation, structured_event
@@ -2684,6 +2812,7 @@ def run_twostage_episode(
     memory = ""
     last_observation = ""
     last_format_error_feedback = ""
+    last_reasoning_exhausted_feedback = ""
     last_sql_execution_error_feedback = ""
     schema_evidence: dict[str, Any] | None = None
     successful_candidates: list[dict[str, Any]] = []
@@ -2740,6 +2869,7 @@ def run_twostage_episode(
             memory=memory,
             last_observation=last_observation,
             format_error_feedback=last_format_error_feedback,
+            reasoning_exhausted_feedback=last_reasoning_exhausted_feedback,
             sql_execution_error_feedback=last_sql_execution_error_feedback,
             total_remaining=effective_max_rounds - round_idx,
             stage_remaining=stage_remaining,
@@ -2748,7 +2878,7 @@ def run_twostage_episode(
             successful_candidates=successful_candidates,
         )
 
-        assistant_text, reasoning_content, latency = call_model(
+        assistant_text, reasoning_content, latency, response_metadata = call_model_with_metadata(
             client,
             base_url=args.base_url,
             api_key=args.api_key,
@@ -2771,6 +2901,13 @@ def run_twostage_episode(
         memory_before = memory
         think = extract_think(assistant_text, reasoning_content)
         tool_call, parse_error = parse_tool_call(assistant_text)
+        if parse_error == MISSING_TOOL_CALL_ERROR and response_exhausted_during_reasoning(
+            assistant_text=assistant_text,
+            reasoning_content=reasoning_content,
+            response_metadata=response_metadata,
+            max_tokens=args.max_tokens,
+        ):
+            parse_error = REASONING_EXHAUSTED_ERROR
         round_record: dict[str, Any] = {
             "round": round_idx,
             "stage": stage,
@@ -2783,11 +2920,16 @@ def run_twostage_episode(
             "memory_after": None,
             "compressor_error": None,
             "format_error_feedback": last_format_error_feedback or None,
+            "reasoning_exhausted_feedback": last_reasoning_exhausted_feedback or None,
             "sql_execution_error_feedback": last_sql_execution_error_feedback or None,
             "allowed_tools": round_allowed_tools,
             "schema_final_round_only_terminate": schema_final_round_only_terminate,
             "sql_final_round_only_terminate": sql_final_round_only_terminate,
-            "debug": {"raw_message": assistant_text},
+            "debug": {
+                "raw_message": assistant_text,
+                "finish_reason": response_metadata.get("finish_reason"),
+                "usage": response_metadata.get("usage") or {},
+            },
             "latency": latency,
         }
         if reasoning_content:
@@ -2797,13 +2939,37 @@ def run_twostage_episode(
         active_tool_call: dict[str, Any] | None = tool_call
         tool_result_obj: dict[str, Any] | None = None
         if parse_error:
-            observation = build_invalid_feedback_with_allowed(stage, parse_error, round_allowed_tools)
+            if parse_error == REASONING_EXHAUSTED_ERROR:
+                observation = build_reasoning_exhausted_feedback(stage, round_allowed_tools)
+                round_record["reasoning_exhausted"] = True
+                active_tool_call = {
+                    "name": REASONING_EXHAUSTED_ERROR,
+                    "arguments": {
+                        "finish_reason": response_metadata.get("finish_reason"),
+                        "completion_tokens": (response_metadata.get("usage") or {}).get(
+                            "completion_tokens"
+                        ),
+                        "max_tokens": args.max_tokens,
+                    },
+                }
+            else:
+                if parse_error == MISSING_TOOL_CALL_ERROR:
+                    observation = build_missing_tool_call_feedback(stage, round_allowed_tools)
+                else:
+                    observation = build_invalid_feedback_with_allowed(
+                        stage, parse_error, round_allowed_tools
+                    )
+                round_record["format_error"] = True
+                active_tool_call = {"name": "format_error", "arguments": {"error": parse_error}}
             round_record["error"] = parse_error
-            active_tool_call = {"name": "format_error", "arguments": {"error": parse_error}}
         elif tool_call is None:
-            observation = build_invalid_feedback_with_allowed(stage, "missing tool_call", round_allowed_tools)
-            round_record["error"] = "missing tool_call"
-            active_tool_call = {"name": "format_error", "arguments": {"error": "missing tool_call"}}
+            observation = build_missing_tool_call_feedback(stage, round_allowed_tools)
+            round_record["error"] = MISSING_TOOL_CALL_ERROR
+            round_record["format_error"] = True
+            active_tool_call = {
+                "name": "format_error",
+                "arguments": {"error": MISSING_TOOL_CALL_ERROR},
+            }
         else:
             tool_name = tool_call["name"]
             if tool_name == "terminate_stage":
@@ -2971,10 +3137,15 @@ def run_twostage_episode(
         round_record["memory_delta"] = memory_delta
         round_record["memory_after"] = memory
         round_record["compressor_error"] = compressor_error
-        if parse_error or tool_call is None:
+        if parse_error == REASONING_EXHAUSTED_ERROR:
+            last_reasoning_exhausted_feedback = observation
+            last_format_error_feedback = ""
+        elif parse_error or tool_call is None:
             last_format_error_feedback = observation
+            last_reasoning_exhausted_feedback = ""
         else:
             last_format_error_feedback = ""
+            last_reasoning_exhausted_feedback = ""
         if (
             tool_call is not None
             and tool_call.get("name") in {"execute_sub_sql", "execute_sql"}
@@ -3032,6 +3203,8 @@ def compute_summary(records: list[dict[str, Any]], args: argparse.Namespace, dat
     compressor_errors = 0
     stage_violations = 0
     format_errors = 0
+    missing_tool_calls = 0
+    reasoning_exhaustions = 0
     for record in records:
         for round_record in record.get("rounds") or []:
             if round_record.get("compressor_error"):
@@ -3039,8 +3212,15 @@ def compute_summary(records: list[dict[str, Any]], args: argparse.Namespace, dat
             if round_record.get("stage_violation"):
                 stage_violations += 1
             error = str(round_record.get("error") or "")
-            if "tool_call" in error or "format" in error or "missing" in error:
+            if round_record.get("reasoning_exhausted") or error == REASONING_EXHAUSTED_ERROR:
+                reasoning_exhaustions += 1
+            elif round_record.get("format_error"):
                 format_errors += 1
+            elif "tool_call" in error or "format" in error or "missing" in error:
+                # Backward-compatible counting for episodes created before explicit flags.
+                format_errors += 1
+            if error == MISSING_TOOL_CALL_ERROR:
+                missing_tool_calls += 1
     return {
         "dataset": str(data_path),
         "db_root": str(db_root),
@@ -3073,6 +3253,8 @@ def compute_summary(records: list[dict[str, Any]], args: argparse.Namespace, dat
         "compressor_error_count": compressor_errors,
         "stage_violation_count": stage_violations,
         "format_error_count": format_errors,
+        "missing_tool_call_count": missing_tool_calls,
+        "reasoning_exhausted_count": reasoning_exhaustions,
         "used_fallback_sql_count": sum(1 for record in records if record.get("used_fallback_sql")),
         "auto_stage_transition_count": sum(1 for record in records if record.get("auto_stage_transition")),
         "sql_stage_budget_exhausted_count": sum(1 for record in records if record.get("sql_stage_budget_exhausted")),
