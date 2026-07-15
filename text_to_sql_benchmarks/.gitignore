@@ -2,3 +2,12 @@ __pycache__/
 *.py[cod]
 models/
 data/arcwise_plat/
+data/downloads/
+logs/
+
+# Evaluation runs are generated locally. Previously tracked reference results
+# remain tracked, while new run directories stay out of source commits.
+results/
+
+*.log
+*.pid

@@ -837,7 +837,7 @@ def call_model(
     api_key: str,
     model: str,
     messages: list[dict[str, str]],
-    max_tokens: int,
+    max_tokens: int | None,
     temperature: float,
     top_p: float,
     llm_retries: int,
@@ -848,17 +848,19 @@ def call_model(
     last_error: Exception | None = None
     for attempt in range(llm_retries + 1):
         try:
+            request_payload: dict[str, Any] = {
+                "model": model,
+                "messages": messages,
+                "temperature": temperature,
+                "top_p": top_p,
+                "chat_template_kwargs": {"enable_thinking": enable_thinking},
+            }
+            if max_tokens is not None:
+                request_payload["max_tokens"] = max_tokens
             response = client.post(
                 f"{base_url.rstrip('/')}/chat/completions",
                 headers={"Authorization": f"Bearer {api_key}"},
-                json={
-                    "model": model,
-                    "messages": messages,
-                    "max_tokens": max_tokens,
-                    "temperature": temperature,
-                    "top_p": top_p,
-                    "chat_template_kwargs": {"enable_thinking": enable_thinking},
-                },
+                json=request_payload,
             )
             response.raise_for_status()
             payload = response.json()
